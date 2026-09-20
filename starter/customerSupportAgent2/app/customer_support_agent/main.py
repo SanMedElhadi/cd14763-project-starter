@@ -347,6 +347,10 @@ result = {
     "points_redeemed": points_redeemed,
     "points_value_usd": points_value,
     "subtotal_after_points": subtotal,
+    # tier_discount_pct is the percentage (10.0 for Gold); tier_discount_rate is
+    # the same value as a fraction (0.10). Both are returned so a consumer can
+    # use either without unit ambiguity.
+    "tier_discount_pct": round(tier_rate * 100, 2),
     "tier_discount_rate": tier_rate,
     "tier_discount_usd": tier_discount,
     "final_total": final_total,
@@ -434,14 +438,24 @@ def calculate_loyalty_discount(
         tier_discount = round(order_total * tier_rate, 2)
         final_total = round(order_total - tier_discount, 2)
 
+        # The fallback returns the same key set as the sandbox path, so a
+        # consumer never has to branch on which path produced the result. No
+        # points are redeemed here, so the balance is returned unchanged.
         return json.dumps({
             "tier": tier_key,
+            "product_category": str(product_category).strip().lower(),
             "order_total": round(order_total, 2),
+            "points_balance": int(loyalty_points),
             "points_redeemed": 0,
+            "points_value_usd": 0.0,
+            "subtotal_after_points": round(order_total, 2),
+            "tier_discount_pct": round(tier_rate * 100, 2),
             "tier_discount_rate": tier_rate,
             "tier_discount_usd": tier_discount,
             "final_total": final_total,
             "total_savings": tier_discount,
+            "points_earned": 0,
+            "remaining_points": int(loyalty_points),
             "degraded": True,
             "note": (
                 "Calculated without the code sandbox: tier discount only, "
