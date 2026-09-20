@@ -1,0 +1,44 @@
+[project]
+name = "customer-support-agent"
+version = "0.1.0"
+description = "Customer support agent for Amazon Bedrock AgentCore"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "bedrock-agentcore>=1.4.1",
+    "strands-agents>=1.28.0",
+    # The [agent-core-browser] extra declares what AgentCoreBrowser needs —
+    # playwright and nest-asyncio — at the versions the package expects.
+    # Listing them by hand is how nest-asyncio went missing.
+    "strands-agents-tools[agent-core-browser]>=0.2.21",
+]
+
+# Removed from the starter's dependency list, deliberately:
+#
+#   asyncio                            a standard-library module. The PyPI
+#                                      package of that name is a 5 KB sdist
+#                                      with no wheels, so it compiles from
+#                                      source on every build and installs a
+#                                      module shadowing the stdlib one.
+#
+#   bedrock-agentcore-starter-toolkit  the deprecated deploy CLI. A build-time
+#                                      tool; in the runtime it only adds size
+#                                      and cold-start import time.
+#
+#   chardet, nest-asyncio, urllib3     pulled in transitively by the packages
+#                                      above; pinning them here only creates
+#                                      resolution conflicts later.
+
+[tool.uv]
+# mcp declares pywin32 on Windows for its stdio transport. We only use the
+# streamable-HTTP client, so it is never needed — and it breaks the deploy,
+# because the CLI reproduces the local environment for linux/arm64 and pywin32
+# has no Linux wheels.
+#
+# An impossible marker removes the requirement on every platform, so it stays
+# out of both uv.lock and the local .venv. Unlike `environments`, this does not
+# stop `uv sync` from working on Windows.
+override-dependencies = [
+    "pywin32; sys_platform == 'never'",
+]
