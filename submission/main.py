@@ -324,7 +324,12 @@ usable_points = (int(loyalty_points) // 500) * 500
 # Redemption may not cover more than half the order. Recomputed as whole blocks
 # so the cap never produces a fractional 500-point block.
 max_redeem_value = order_total * 0.5
-max_points = (int(max_redeem_value * 100) // 500) * 500
+
+# round(), not int(): converting dollars to points multiplies a float, and
+# truncation loses a block whenever the product lands just below an exact value.
+# order_total = 89.99999999999999 gives 4499.999999999999, which int() cuts to
+# 4499 and floors to 4000 instead of 4500.
+max_points = (round(max_redeem_value * 100) // 500) * 500
 points_redeemed = min(usable_points, max_points)
 points_value = round(points_redeemed / 100, 2)
 
@@ -382,10 +387,35 @@ def calculate_loyalty_discount(
     Returns:
         Full discount breakdown and final price
     """
+    # Validate before building the code string. Semantically invalid input would
+    # otherwise reach the sandbox and come back as a traceback or a nonsense
+    # total, which the model then reports to the customer as a real figure.
+    # Failing here returns a clean, actionable message instead.
+    try:
+        loyalty_points = int(loyalty_points)
+        order_total = float(order_total)
+    except (TypeError, ValueError):
+        return json.dumps({
+            "error": "invalid_input",
+            "message": "loyalty_points must be a whole number and order_total a number.",
+        })
+
+    if order_total <= 0:
+        return json.dumps({
+            "error": "invalid_input",
+            "message": f"order_total must be greater than zero; received {order_total}.",
+        })
+
+    if loyalty_points < 0:
+        return json.dumps({
+            "error": "invalid_input",
+            "message": f"loyalty_points cannot be negative; received {loyalty_points}.",
+        })
+
     code = (
-        f"loyalty_points = {int(loyalty_points)}\n"
+        f"loyalty_points = {loyalty_points}\n"
         f"tier = {str(tier)!r}\n"
-        f"order_total = {float(order_total)}\n"
+        f"order_total = {order_total}\n"
         f"product_category = {str(product_category)!r}\n"
         + _DISCOUNT_LOGIC
     )
@@ -430,6 +460,14 @@ def calculate_loyalty_discount(
         # The sandbox can be unavailable or throttled. A tool that raises kills
         # the whole turn, so degrade instead and flag it clearly.
         logger.error("Code Interpreter unavailable, using fallback: %s", e)
+
+        # Audit trail: during a sandbox outage points are silently skipped, so
+        # record the balance that went unredeemed. Support can reconcile these
+        # cases afterwards by filtering the log group on "points not applied".
+        logger.info(
+            "Fallback discount: points not applied — balance %s, tier %s, order_total %.2f",
+            loyalty_points, tier, order_total,
+        )
 
         tier_rates = {"Silver": 0.00, "Gold": 0.10, "Platinum": 0.15}
         tier_key = str(tier).strip().title()
